@@ -116,9 +116,16 @@ struct HomeView: View {
     // MARK: masonry column
     @ViewBuilder
     private func column(for list: [Post]) -> some View {
+        // Compute a stable image height per column to avoid reflow when images load
+        let screenW: CGFloat = UIScreen.main.bounds.width
+        let colSpacing: CGFloat = 8
+        let sidePadding: CGFloat = 24 // .padding(.horizontal, 12)
+        let colWidth = (screenW - sidePadding - colSpacing) / 2
+        let imageHeight = colWidth * (5.0/4.0) // 4:5 aspect (portrait)
+
         LazyVStack(spacing: 8) {
             ForEach(list) { post in
-                PostCardView(post: post) { toggleLike(post) }
+                PostCardView(post: post, fixedImageHeight: imageHeight) { toggleLike(post) }
                     .onAppear { maybePrefetch(after: post) }
             }
         }
@@ -146,7 +153,7 @@ struct HomeView: View {
             DispatchQueue.main.async {
                 switch res {
                 case .success(let tuple):
-                    withAnimation(.easeIn) { posts = tuple.0 }
+                    posts = tuple.0
                     // Prefetch images for the initial batch
                     ImagePrefetcher.shared.prefetch(urlStrings: tuple.0.map { $0.imageURL })
                     cursor     = tuple.1
@@ -172,7 +179,7 @@ struct HomeView: View {
                 switch res {
                 case .success(let tuple):
                     let newOnes = tuple.0.filter { p in !posts.contains(where: { $0.id == p.id }) }
-                    withAnimation(.easeIn) { posts.append(contentsOf: newOnes) }
+                    posts.append(contentsOf: newOnes)
                     // Prefetch newly appended images
                     ImagePrefetcher.shared.prefetch(urlStrings: newOnes.map { $0.imageURL })
                     cursor     = tuple.1
@@ -193,7 +200,7 @@ struct HomeView: View {
                 switch res {
                 case .success(let tuple):
                     let newOnes = tuple.0.filter { p in !posts.contains(where: { $0.id == p.id }) }
-                    withAnimation(.easeIn) { posts.append(contentsOf: newOnes) }
+                    posts.append(contentsOf: newOnes)
                     // Prefetch remaining first-page images
                     ImagePrefetcher.shared.prefetch(urlStrings: newOnes.map { $0.imageURL })
                     cursor     = tuple.1
