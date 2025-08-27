@@ -35,24 +35,22 @@ struct ActivityView: View {
                                     // Section header
                                     HStack {
                                         Text(section)
-                                            .font(.headline)
-                                            .fontWeight(.semibold)
+                                            .font(.title3).bold()
                                             .foregroundColor(.primary)
                                         Spacer()
                                     }
                                     .padding(.horizontal, 20)
-                                    .padding(.vertical, 12)
+                                    .padding(.top, 14)
+                                    .padding(.bottom, 8)
                                     .background(Color(.systemBackground))
                                     
                                     // Section content
                                     VStack(spacing: 0) {
                                         ForEach(sectionNotifications) { notification in
                                             ActivityRow(notification: notification)
-                                            
-                                            if notification.id != sectionNotifications.last?.id {
-                                                Divider()
-                                                    .padding(.leading, 72)
-                                            }
+                                                .background(Color(.systemBackground))
+                                            Divider()
+                                                .padding(.leading, 72)
                                         }
                                     }
                                     .background(Color(.systemBackground))
@@ -247,24 +245,26 @@ struct ActivityRow: View {
             .buttonStyle(PlainButtonStyle())
             
             // Activity content
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: 6) {
                 HStack(alignment: .top, spacing: 4) {
                     VStack(alignment: .leading, spacing: 2) {
-                        HStack(spacing: 4) {
+                        HStack(spacing: 6) {
                             Text(notification.fromUsername)
-                                .font(.system(size: 15, weight: .semibold))
+                                .font(.system(size: 16, weight: .semibold))
                                 .foregroundColor(.primary)
+                                .lineLimit(1)
                             
                             Text(activityMessage)
-                                .font(.system(size: 15))
+                                .font(.system(size: 16))
                                 .foregroundColor(.primary)
+                                .lineLimit(1)
                         }
                         
                         if notification.kind != .like && notification.kind != .follow && !notification.text.isEmpty {
                             Text(notification.text)
                                 .font(.system(size: 14))
                                 .foregroundColor(.secondary)
-                                .lineLimit(3)
+                                .lineLimit(2)
                                 .multilineTextAlignment(.leading)
                         }
                     }
@@ -272,7 +272,7 @@ struct ActivityRow: View {
                     Spacer(minLength: 8)
                     
                     Text(notification.timeAgo)
-                        .font(.system(size: 13))
+                        .font(.system(size: 13, weight: .semibold))
                         .foregroundColor(.secondary)
                         .lineLimit(1)
                 }
@@ -339,7 +339,7 @@ struct ActivityRow: View {
             }
         }
         .padding(.horizontal, 20)
-        .padding(.vertical, 12)
+        .padding(.vertical, 14)
         .background(
             NavigationLink(destination: ProfileView(userId: notification.fromUserId),
                            isActive: $showProfile) { EmptyView() }.hidden()

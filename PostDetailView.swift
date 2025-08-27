@@ -200,9 +200,8 @@ struct PostDetailView: View {
         GeometryReader { geo in
             if let url = URL(string: post.imageURL) {
 
-                // determine which ratio to display (natural vs capped)
-                let naturalRatio = imgRatio ?? 1                // h / w
-                let displayRatio = min(naturalRatio, 1.25)      // cap at 4:5
+                // Fixed 4:5 display height to prevent shrink→expand on appear
+                let displayRatio: CGFloat = 1.25
                 let displayHeight = UIScreen.main.bounds.width * displayRatio
 
                 ZoomableAsyncImage(url: url, aspectRatio: $imgRatio)
@@ -236,7 +235,7 @@ struct PostDetailView: View {
                 Color.gray.opacity(0.2)
             }
         }
-        .frame(height: UIScreen.main.bounds.width * min(imgRatio ?? 1, 1.25))
+        .frame(height: UIScreen.main.bounds.width * 1.25)
     }
 
     // MARK: overlays

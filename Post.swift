@@ -27,6 +27,7 @@ struct Post: Identifiable, Codable {
     let longitude:   Double?
     var  temp:       Double?
     var  weatherIcon: String?
+    var  city:        String?      // ← added
 
     // outfit
     var outfitItems: [OutfitItem]? = nil
@@ -87,7 +88,7 @@ struct Post: Identifiable, Codable {
     enum CodingKeys: String, CodingKey {
         case id, userId, imageURL, caption, username, timestamp, likes, isLiked
         case isSaved // ← added
-        case latitude, longitude, temp, weatherIcon, hashtags
+        case latitude, longitude, temp, weatherIcon, hashtags, city
         case outfitItems, outfitTags
     }
 }

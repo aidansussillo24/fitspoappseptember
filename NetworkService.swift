@@ -15,6 +15,7 @@ import FirebaseFirestore
 import FirebaseStorage
 import Network
 import UIKit
+import CoreLocation
 
 // ─────────────────────────────────────────────────────────────
 final class NetworkService {
@@ -141,6 +142,19 @@ final class NetworkService {
                 ]
                 if let latitude  { data["latitude"]  = latitude  }
                 if let longitude { data["longitude"] = longitude }
+                
+                // Reverse-geocode to city for Explore buckets
+                if let lat = latitude, let lon = longitude {
+                    let loc = CLLocation(latitude: lat, longitude: lon)
+                    let geocoder = CLGeocoder()
+                    geocoder.reverseGeocodeLocation(loc) { placemarks, _ in
+                        if let city = placemarks?.first?.locality {
+                            data["city"] = city
+                        }
+                        finishWrite()
+                    }
+                    return
+                }
                 
                 func finishWrite() {
                     // 3️⃣ write doc
@@ -565,6 +579,7 @@ final class NetworkService {
             longitude:    d["longitude"] as? Double,
             temp:         d["temp"]      as? Double,
             weatherIcon:  d["weatherIcon"] as? String,
+            city:          d["city"]      as? String,
             outfitItems:  parseOutfitItems(d["scanResults"]),
             outfitTags:   parseOutfitTags(d["outfitTags"]),
             hashtags:     d["hashtags"]  as? [String] ?? []

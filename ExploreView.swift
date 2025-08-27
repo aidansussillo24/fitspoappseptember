@@ -400,11 +400,13 @@ struct ExploreView: View {
 
     private func loadCityPosts(city: String) async -> [Post] {
         await withCheckedContinuation { (continuation: CheckedContinuation<[Post], Never>) in
-            NetworkService.shared.fetchPostsPage(pageSize: 8, after: nil) { result in
+            NetworkService.shared.fetchPostsPage(pageSize: 80, after: nil) { result in
                 DispatchQueue.main.async {
                     switch result {
                     case .success(let (allPosts, _)):
-                        continuation.resume(returning: Array(allPosts.prefix(8)))
+                        let cityPosts = allPosts.filter { ($0.city ?? "").localizedCaseInsensitiveContains(city) }
+                        let top = cityPosts.sorted { $0.likes > $1.likes }.prefix(12)
+                        continuation.resume(returning: Array(top))
                     case .failure(let error):
                         print("Failed to load \(city) posts: \(error)")
                         continuation.resume(returning: [])
