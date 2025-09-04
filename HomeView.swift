@@ -22,6 +22,11 @@ struct HomeView: View {
     @State private var isLoadingPage = false
     @State private var isRefreshing  = false
 
+    // Header animation state
+    @State private var headerVisible = true
+    @State private var lastScrollOffset: CGFloat = 0
+    @State private var scrollOffset: CGFloat = 0
+
     private let PAGE_SIZE      = 12           // full page size
     private let FIRST_BATCH    = 4            // show first two rows fast
     private let PREFETCH_AHEAD = 4            // when ≤4 remain → fetch
@@ -35,63 +40,98 @@ struct HomeView: View {
 
     var body: some View {
         NavigationView {
-            ScrollView(showsIndicators: false) {
-                VStack(spacing: 16) {
-                    header
+            ZStack(alignment: .top) {
+                // Main scrollable content
+                ScrollViewReader { proxy in
+                    ScrollView(showsIndicators: false) {
+                        LazyVStack(spacing: 0) {
+                            // Spacer for header height when visible
+                            Rectangle()
+                                .fill(Color.clear)
+                                .frame(height: headerVisible ? 80 : 0)
+                                .animation(.easeInOut(duration: 0.3), value: headerVisible)
+                            
+                            VStack(spacing: 16) {
+                                // ── Masonry grid
+                                if posts.isEmpty && isLoadingPage {
+                                    skeletonGrid
+                                } else {
+                                    HStack(alignment: .top, spacing: 8) {
+                                        column(for: leftColumn)
+                                        column(for: rightColumn)
+                                    }
+                                    .padding(.horizontal, 12)
+                                }
 
-                    // ── Masonry grid
-                    if posts.isEmpty && isLoadingPage {
-                        skeletonGrid
-                    } else {
-                        HStack(alignment: .top, spacing: 8) {
-                            column(for: leftColumn)
-                            column(for: rightColumn)
+                                if isLoadingPage && !posts.isEmpty {
+                                    ProgressView()
+                                        .padding(.vertical, 32)
+                                }
+
+                                if reachedEnd, !posts.isEmpty {
+                                    Text("No more posts")
+                                        .font(.footnote)
+                                        .foregroundColor(.secondary)
+                                        .padding(.vertical, 32)
+                                        .padding(.top, 16)
+                                }
+                            }
                         }
-                        .padding(.horizontal, 12)
+                        .background(
+                            GeometryReader { geometry in
+                                Color.clear.preference(
+                                    key: ScrollOffsetPreferenceKey.self,
+                                    value: geometry.frame(in: .named("scroll")).minY
+                                )
+                            }
+                        )
                     }
-
-                    if isLoadingPage && !posts.isEmpty {
-                        ProgressView()
-                            .padding(.vertical, 32)
+                    .coordinateSpace(name: "scroll")
+                    .onPreferenceChange(ScrollOffsetPreferenceKey.self) { value in
+                        handleScrollOffset(value)
                     }
-
-                    if reachedEnd, !posts.isEmpty {
-                        Text("No more posts")
-                            .font(.footnote)
-                            .foregroundColor(.secondary)
-                            .padding(.vertical, 32)
-                            .padding(.top, 16)
+                    .refreshable { await refresh() }
+                    .onAppear(perform: initialLoad)
+                    .onReceive(NotificationCenter.default.publisher(for: .didUploadPost)) { _ in
+                        Task { await refresh() }
                     }
                 }
+                
+                // Animated header overlay
+                if headerVisible {
+                    header
+                        .transition(.move(edge: .top).combined(with: .opacity))
+                        .zIndex(1)
+                }
             }
-            .refreshable { await refresh() }
-            .onAppear(perform: initialLoad)
-            .onReceive(NotificationCenter.default.publisher(for: .didUploadPost)) { _ in
-                Task { await refresh() }
-            }
+            .animation(.easeInOut(duration: 0.25), value: headerVisible)
             .navigationBarHidden(true)
         }
     }
 
     // MARK: header
     private var header: some View {
-        ZStack {
-            Text("FitSpo").font(.largeTitle).fontWeight(.black)
-            HStack {
-                NavigationLink(destination: ActivityView()) {
-                    Image(systemName: "bell")
-                        .font(.title2)
-                }
-                Spacer()
-                NavigationLink(destination: MessagesView()) {
-                    Image(systemName: "bubble.left.and.bubble.right")
-                        .font(.title2)
+        VStack(spacing: 0) {
+            // Header content
+            ZStack {
+                Text("FitSpo").font(.largeTitle).fontWeight(.black)
+                HStack {
+                    NavigationLink(destination: ActivityView()) {
+                        Image(systemName: "bell")
+                            .font(.title2)
+                    }
+                    Spacer()
+                    NavigationLink(destination: MessagesView()) {
+                        Image(systemName: "bubble.left.and.bubble.right")
+                            .font(.title2)
+                    }
                 }
             }
+            .padding(.horizontal, 16)
+            .padding(.top, 24)
+            .padding(.bottom, 8)
+            .background(Color(.systemBackground))
         }
-        .padding(.horizontal, 16)
-        .padding(.top, 24)
-        .padding(.bottom, 8)
     }
 
 
@@ -279,7 +319,40 @@ struct HomeView: View {
         }
     }
 
+    // MARK: scroll offset handling
+    private func handleScrollOffset(_ offset: CGFloat) {
+        let delta = offset - lastScrollOffset
+        lastScrollOffset = offset
+        
+        // Only update if scroll change is significant
+        guard abs(delta) > 10 else { return }
+        
+        // Simple logic: scrolling down = hide, scrolling up = show
+        if delta < 0 {
+            // Scrolling down - hide header
+            if headerVisible {
+                withAnimation(.easeInOut(duration: 0.3)) {
+                    headerVisible = false
+                }
+            }
+        } else {
+            // Scrolling up - show header
+            if !headerVisible {
+                withAnimation(.easeInOut(duration: 0.3)) {
+                    headerVisible = true
+                }
+            }
+        }
+    }
 
+}
+
+// MARK: - ScrollOffsetPreferenceKey
+struct ScrollOffsetPreferenceKey: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = nextValue()
+    }
 }
 
 #if DEBUG

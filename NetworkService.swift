@@ -147,11 +147,19 @@ final class NetworkService {
                 if let lat = latitude, let lon = longitude {
                     let loc = CLLocation(latitude: lat, longitude: lon)
                     let geocoder = CLGeocoder()
-                    geocoder.reverseGeocodeLocation(loc) { placemarks, _ in
-                        if let city = placemarks?.first?.locality {
-                            data["city"] = city
+                    
+                    // Fetch weather data first
+                    self.fetchWeather(lat: lat, lon: lon) { icon, temperature in
+                        if let icon { data["weatherIcon"] = icon }
+                        if let temperature { data["temp"] = temperature }
+                        
+                        // Then reverse geocode for city
+                        geocoder.reverseGeocodeLocation(loc) { placemarks, _ in
+                            if let city = placemarks?.first?.locality {
+                                data["city"] = city
+                            }
+                            finishWrite()
                         }
-                        finishWrite()
                     }
                     return
                 }
