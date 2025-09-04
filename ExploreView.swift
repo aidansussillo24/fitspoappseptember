@@ -60,10 +60,11 @@ struct ExploreView: View {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 16) {
                     ForEach(posts) { post in
-                                                 PostCardView(post: post, fixedImageHeight: imageHeight) {
-                             Task { await toggleLike(post) }
-                         }
-                        .frame(width: cardWidth, height: cardHeight)
+                        PostCardView(post: post, fixedImageHeight: imageHeight) {
+                            Task { await toggleLike(post) }
+                        }
+                        .frame(width: cardWidth)
+                        .frame(height: cardHeight)
                     }
                 }
                 .padding(.horizontal, 16)
@@ -269,10 +270,10 @@ struct ExploreView: View {
                     } label: {
                         HStack(spacing: 12) {
                             AsyncImage(url: URL(string: u.avatarURL)) { phase in
-                                if let img = phase.image { 
+                                if let img = phase.image {
                                     img.resizable().aspectRatio(contentMode: .fill)
-                                } else { 
-                                    Color.gray.opacity(0.3) 
+                                } else {
+                                    Color.gray.opacity(0.3)
                                 }
                             }
                             .frame(width: 44, height: 44)

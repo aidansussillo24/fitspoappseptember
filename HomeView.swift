@@ -121,14 +121,16 @@ struct HomeView: View {
         let colSpacing: CGFloat = 8
         let sidePadding: CGFloat = 24 // .padding(.horizontal, 12)
         let colWidth = (screenW - sidePadding - colSpacing) / 2
-        let imageHeight = colWidth * (5.0/4.0) // 4:5 aspect (portrait)
+        let imageHeight = colWidth * (5.0/4.0) // 4:5 aspect (portrait)  // fixed height per column to stabilize layout
 
         LazyVStack(spacing: 8) {
             ForEach(list) { post in
                 PostCardView(post: post, fixedImageHeight: imageHeight) { toggleLike(post) }
+                    .frame(width: colWidth) // hard‑set item width to column width
                     .onAppear { maybePrefetch(after: post) }
             }
         }
+        .frame(width: colWidth) // enforce fixed column width
     }
 
     // ─────────────────────────────────────────────────────────

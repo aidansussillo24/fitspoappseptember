@@ -134,7 +134,7 @@ struct PostDetailView: View {
         }
         .background { chatNavigationLink }
         .task { await ensureHotRank() }
-        .onAppear   { 
+        .onAppear   {
             attachListenersAndFetch()
             fetchSavedState() // ← ADDED
         }

@@ -257,9 +257,9 @@ struct ModernImageCropperView: View {
         
         print("Final crop rect: \(cropRect)")
         
-        guard let cgImage = image.cgImage?.cropping(to: cropRect) else { 
+        guard let cgImage = image.cgImage?.cropping(to: cropRect) else {
             print("❌ Failed to crop image")
-            return nil 
+            return nil
         }
         
         let croppedImage = UIImage(cgImage: cgImage)

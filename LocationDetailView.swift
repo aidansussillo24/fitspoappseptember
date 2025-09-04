@@ -152,24 +152,34 @@ struct LocationDetailView: View {
                     let leftColumn = sortedPosts.enumerated().filter { $0.offset.isMultiple(of: 2) }.map(\.element)
                     let rightColumn = sortedPosts.enumerated().filter { !$0.offset.isMultiple(of: 2) }.map(\.element)
                     
+                    let screenW: CGFloat = UIScreen.main.bounds.width
+                    let colSpacing: CGFloat = 8
+                    let sidePadding: CGFloat = 24
+                    let colWidth = (screenW - sidePadding - colSpacing) / 2
+                    let imageHeight = colWidth * (5.0/4.0)
+                    
                     HStack(alignment: .top, spacing: 8) {
                         // Left column
                         LazyVStack(spacing: 8) {
                             ForEach(leftColumn, id: \.id) { post in
-                                PostCardView(post: post) {
+                                PostCardView(post: post, fixedImageHeight: imageHeight) {
                                     // Handle like action if needed
                                 }
+                                .frame(width: colWidth)
                             }
                         }
+                        .frame(width: colWidth)
                         
                         // Right column
                         LazyVStack(spacing: 8) {
                             ForEach(rightColumn, id: \.id) { post in
-                                PostCardView(post: post) {
+                                PostCardView(post: post, fixedImageHeight: imageHeight) {
                                     // Handle like action if needed
                                 }
+                                .frame(width: colWidth)
                             }
                         }
+                        .frame(width: colWidth)
                     }
                     .padding(.horizontal, 12)
                     .padding(.top, 20)

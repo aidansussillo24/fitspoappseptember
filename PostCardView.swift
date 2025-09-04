@@ -125,6 +125,7 @@ struct PostCardView: View {
             NavigationLink(destination: PostDetailView(post: post)) {
                 RemoteImage(url: post.imageURL, contentMode: .fill)
                     .aspectRatio(4/5, contentMode: .fill)
+                    .frame(width: fixedImageHeight != nil ? fixedImageHeight! * 4/5 : nil)
                     .frame(height: fixedImageHeight)   // nil does nothing; Explore supplies a value
                     .clipped()
                     .highPriorityGesture(
@@ -173,6 +174,8 @@ struct PostCardView: View {
         }
         .background(Color.white)
         .cornerRadius(16)
+        .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
         .shadow(color: Color.black.opacity(0.1), radius: 1, x: 0, y: 1)
         .sheet(isPresented: $showShareSheet) { shareSheet }
         .sheet(isPresented: $showReportSheet) {
