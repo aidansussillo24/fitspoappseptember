@@ -20,6 +20,21 @@ struct NewPostView: View {
     @State private var isLoadingAssets = true
     private let manager = PHCachingImageManager()
     
+    // Enhanced caching for better performance
+    @State private var imageCache: [String: UIImage] = [:]
+    @State private var preloadingQueue = DispatchQueue(label: "image-preload", qos: .userInitiated)
+    
+    // Full-library support with incremental paging
+    @State private var fetchResult: PHFetchResult<PHAsset>?
+    @State private var loadedCount: Int = 0
+    private let pageSize: Int = 120
+    @State private var totalPhotoCount: Int = 0
+    
+    // Album selection
+    @State private var albums: [PHAssetCollection] = []
+    @State private var selectedAlbum: PHAssetCollection?
+    @State private var showAlbumPicker = false
+    
     // MARK: - Selection
     @State private var selected: PHAsset?
     @State private var preview: UIImage?
@@ -108,58 +123,36 @@ struct NewPostView: View {
     
     // MARK: - Preview Section
     private var previewSection: some View {
-        Group {
+        VStack(spacing: 0) {
             if let img = preview {
-                ZStack(alignment: .bottomTrailing) {
-                    // Instagram-style photo display
-                    GeometryReader { geometry in
-                        let screenWidth = geometry.size.width
-                        let imageAspectRatio = img.size.width / img.size.height
+                // Fixed 4:5 container with full-bleed blurred background and centered image
+                let containerHeight: CGFloat = collapsed ? 0 : 400
+                GeometryReader { geometry in
+                    let width = geometry.size.width
+                    
+                    ZStack {
+                        // Background blur
+                        Image(uiImage: img)
+                            .resizable()
+                            .scaledToFill()
+                            .frame(width: width, height: containerHeight)
+                            .clipped()
+                            .blur(radius: 18)
+                            .opacity(0.55)
                         
-                        // Instagram logic: if image is wider than 4:5, center it and crop sides
-                        // If image is taller than 4:5, let it fill width and crop top/bottom
-                        let maxAspectRatio: CGFloat = 0.8 // 4:5 ratio
-                        
-                        if imageAspectRatio > maxAspectRatio {
-                            // Wide image: fill width and crop sides (like Instagram)
-                            Image(uiImage: img)
-                                .resizable()
-                                .scaledToFill()
-                                .frame(width: screenWidth, height: screenWidth / maxAspectRatio)
-                                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                                .clipped()
-                        } else {
-                            // Tall/normal image: fill width and crop top/bottom
-                            Image(uiImage: img)
-                                .resizable()
-                                .scaledToFill()
-                                .frame(width: screenWidth, height: screenWidth / imageAspectRatio)
-                                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                                .clipped()
-                        }
+                        // Foreground image
+                        Image(uiImage: img)
+                            .resizable()
+                            .scaledToFit()
+                            .frame(width: width, height: containerHeight)
                     }
-                    .frame(maxHeight: collapsed ? 0 : 450)
+                    .frame(width: width, height: containerHeight)
+                    .clipped()
                     .cornerRadius(16)
                     .shadow(color: .black.opacity(0.1), radius: 8, x: 0, y: 4)
-                    
-                    // Crop button overlay
-                    Button(action: {
-                        showCropper = true
-                    }) {
-                        HStack(spacing: 8) {
-                            Image(systemName: "crop")
-                                .font(.system(size: 14, weight: .semibold))
-                            Text("Crop")
-                                .font(.system(size: 14, weight: .semibold))
-                        }
-                        .foregroundColor(.white)
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 8)
-                        .background(Color.black.opacity(0.7))
-                        .cornerRadius(20)
-                    }
-                    .padding(16)
                 }
+                .frame(height: containerHeight)
+                .frame(maxWidth: .infinity)
             } else {
                 // Empty state
                 VStack(spacing: 16) {
@@ -172,7 +165,7 @@ struct NewPostView: View {
                         .foregroundColor(.secondary)
                 }
                 .frame(maxWidth: .infinity)
-                .frame(maxHeight: collapsed ? 0 : 450)
+                .frame(height: collapsed ? 0 : 400)
                 .background(Color(.systemGray6))
                 .cornerRadius(16)
             }
@@ -208,23 +201,34 @@ struct NewPostView: View {
     // MARK: - Library Header
     private var libraryHeader: some View {
         HStack {
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Photo Library")
-                    .font(.system(size: 18, weight: .semibold))
-                    .foregroundColor(.primary)
-                
-                HStack(spacing: 4) {
-                    Text("\(assets.count) photos")
+            Button(action: {
+                showAlbumPicker = true
+            }) {
+                HStack(spacing: 6) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(selectedAlbum?.localizedTitle ?? "Photo Library")
+                            .font(.system(size: 18, weight: .semibold))
+                            .foregroundColor(.primary)
+                        
+                        HStack(spacing: 4) {
+                            Text("\(totalPhotoCount > 0 ? totalPhotoCount : assets.count) photos")
+                                .font(.system(size: 14, weight: .medium))
+                                .foregroundColor(.secondary)
+                            
+                            if selected != nil {
+                                Text("• Selected")
+                                    .font(.system(size: 14, weight: .medium))
+                                    .foregroundColor(.blue)
+                            }
+                        }
+                    }
+                    
+                    Image(systemName: "chevron.down")
                         .font(.system(size: 14, weight: .medium))
                         .foregroundColor(.secondary)
-                    
-                    if selected != nil {
-                        Text("• Selected")
-                            .font(.system(size: 14, weight: .medium))
-                            .foregroundColor(.blue)
-                    }
                 }
             }
+            .buttonStyle(PlainButtonStyle())
             
             Spacer()
             
@@ -239,6 +243,19 @@ struct NewPostView: View {
         .clipped()
         .opacity(collapsed ? 0 : 1)
         .animation(.easeInOut(duration: 0.3), value: collapsed)
+        .sheet(isPresented: $showAlbumPicker) {
+            AlbumPickerView(
+                albums: albums,
+                selectedAlbum: $selectedAlbum,
+                onSelect: { album in
+                    selectedAlbum = album
+                    showAlbumPicker = false
+                    Task {
+                        await loadAssets(from: album)
+                    }
+                }
+            )
+        }
     }
     
     // MARK: - Photo Grid
@@ -285,18 +302,24 @@ struct NewPostView: View {
                             asset: asset,
                             manager: manager,
                             isSelected: asset == selected,
-                            index: index
+                            index: index,
+                            imageCache: $imageCache
                         ) {
                             print("Tapped thumbnail at index: \(index)")
                             select(asset)
                         }
                         .id("\(asset.localIdentifier)-\(index)")
+                        .onAppear {
+                            if index >= assets.count - 12 {
+                                loadNextPageIfNeeded()
+                            }
+                        }
                     }
                 }
                 .padding(.horizontal, 16)
             }
         }
-        .background(Color(.systemGray6))
+        .background(Color(.systemGray5))
         .onPreferenceChange(OffsetKey.self) { y in
             if y < -30 && !collapsed && preview != nil {
                 withAnimation(.easeInOut(duration: 0.3)) {
@@ -336,25 +359,156 @@ struct NewPostView: View {
             return
         }
         
-        let options = PHFetchOptions()
-        options.sortDescriptors = [NSSortDescriptor(key: "creationDate", ascending: false)]
-        options.fetchLimit = 100 // Increased limit for better experience
+        // Load albums
+        await loadAlbums()
         
-        let fetch = PHAsset.fetchAssets(with: .image, options: options)
+        // Load assets from selected album or all photos
+        await loadAssets(from: selectedAlbum)
+    }
+    
+    private func loadAlbums() async {
+        var allAlbums: [PHAssetCollection] = []
+        var favoritesAlbum: PHAssetCollection?
+        var otherAlbums: [PHAssetCollection] = []
         
-        var tempAssets: [PHAsset] = []
-        fetch.enumerateObjects { asset, _, _ in
-            tempAssets.append(asset)
+        // Smart albums - only local ones
+        let smartAlbums = PHAssetCollection.fetchAssetCollections(with: .smartAlbum, subtype: .any, options: nil)
+        smartAlbums.enumerateObjects { collection, _, _ in
+            // Filter out shared albums, empty albums, and unwanted system albums
+            let isLocalAlbum = collection.assetCollectionSubtype != .smartAlbumAllHidden &&
+                              collection.assetCollectionSubtype != .albumCloudShared &&
+                              collection.assetCollectionSubtype != .albumMyPhotoStream
+            
+            if isLocalAlbum {
+                let assets = PHAsset.fetchAssets(in: collection, options: nil)
+                if assets.count > 0 {
+                    // Prioritize Favorites first
+                    if collection.assetCollectionSubtype == .smartAlbumFavorites {
+                        favoritesAlbum = collection
+                    } else {
+                        otherAlbums.append(collection)
+                    }
+                }
+            }
         }
         
+        // User albums (regular albums, not shared)
+        let userAlbums = PHAssetCollection.fetchAssetCollections(with: .album, subtype: .albumRegular, options: nil)
+        userAlbums.enumerateObjects { collection, _, _ in
+            let assets = PHAsset.fetchAssets(in: collection, options: nil)
+            if assets.count > 0 {
+                otherAlbums.append(collection)
+            }
+        }
+        
+        // Build final list with Favorites first
+        if let favorites = favoritesAlbum {
+            allAlbums.append(favorites)
+        }
+        allAlbums.append(contentsOf: otherAlbums)
+        
         await MainActor.run {
-            assets = tempAssets
+            albums = allAlbums
+        }
+    }
+    
+    private func loadAssets(from album: PHAssetCollection?) async {
+        assets = []
+        imageCache = [:]
+        loadedCount = 0
+        
+        let options = PHFetchOptions()
+        options.sortDescriptors = [NSSortDescriptor(key: "creationDate", ascending: false)]
+        
+        let fetch: PHFetchResult<PHAsset>
+        if let album = album {
+            fetch = PHAsset.fetchAssets(in: album, options: options)
+        } else {
+            fetch = PHAsset.fetchAssets(with: .image, options: options)
+        }
+        
+        fetchResult = fetch
+        totalPhotoCount = fetch.count
+        
+        // Load the first page
+        let initialCount = min(pageSize, fetch.count)
+        var initialAssets: [PHAsset] = []
+        if initialCount > 0 {
+            let indexSet = IndexSet(integersIn: 0..<initialCount)
+            fetch.enumerateObjects(at: indexSet, options: []) { asset, _, _ in
+                initialAssets.append(asset)
+            }
+        }
+        loadedCount = initialAssets.count
+        
+        await MainActor.run {
+            assets = initialAssets
             isLoadingAssets = false
             
-            // Auto-select first image
-            if let first = assets.first {
-                select(first)
+            if let first = assets.first { select(first) }
+            preloadThumbnails()
+        }
+    }
+    
+    // MARK: - Image Preloading
+    private func preloadThumbnails() {
+        guard !assets.isEmpty else { return }
+        
+        // Preload first 20 thumbnails for smooth scrolling
+        let preloadCount = min(20, assets.count)
+        let assetsToPreload = Array(assets.prefix(preloadCount))
+        
+        preloadingQueue.async {
+            let scale = UIScreen.main.scale
+            let targetSize = CGSize(width: 300 * scale, height: 300 * scale)
+            
+            let options = PHImageRequestOptions()
+            options.deliveryMode = .highQualityFormat
+            options.isNetworkAccessAllowed = true
+            options.isSynchronous = false
+            options.resizeMode = .exact
+            
+            for asset in assetsToPreload {
+                // Skip if already cached
+                if imageCache[asset.localIdentifier] != nil { continue }
+                
+                manager.requestImage(
+                    for: asset,
+                    targetSize: targetSize,
+                    contentMode: .aspectFill,
+                    options: options
+                ) { img, _ in
+                    DispatchQueue.main.async {
+                        if let img = img {
+                            imageCache[asset.localIdentifier] = img
+                        }
+                    }
+                }
             }
+        }
+    }
+    
+    // MARK: - Paging
+    private func loadNextPageIfNeeded() {
+        guard let fetch = fetchResult else { return }
+        guard loadedCount < fetch.count else { return }
+        
+        let nextCount = min(pageSize, fetch.count - loadedCount)
+        guard nextCount > 0 else { return }
+        
+        var newAssets: [PHAsset] = []
+        let start = loadedCount
+        let end = loadedCount + nextCount
+        let indexSet = IndexSet(integersIn: start..<end)
+        fetch.enumerateObjects(at: indexSet, options: []) { asset, _, _ in
+            newAssets.append(asset)
+        }
+        loadedCount += nextCount
+        
+        // Append on main thread
+        DispatchQueue.main.async {
+            assets.append(contentsOf: newAssets)
+            preloadThumbnails()
         }
     }
     
@@ -394,6 +548,7 @@ fileprivate struct FixedSizeThumbnail: View {
     let manager: PHCachingImageManager
     let isSelected: Bool
     let index: Int
+    @Binding var imageCache: [String: UIImage]
     let onTap: () -> Void
     
     @State private var image: UIImage?
@@ -414,9 +569,10 @@ fileprivate struct FixedSizeThumbnail: View {
                 if let img = image {
                     Image(uiImage: img)
                         .resizable()
-                        .scaledToFill()
+                        .aspectRatio(contentMode: .fill)
                         .frame(width: size, height: size)
                         .clipped()
+                        .position(x: size/2, y: size/2) // Ensure perfect centering
                 } else {
                     Rectangle()
                         .fill(Color(.systemGray5))
@@ -485,16 +641,24 @@ fileprivate struct FixedSizeThumbnail: View {
     private func loadThumbnail() {
         guard image == nil else { return }
         
+        // Check cache first for instant loading
+        if let cachedImage = imageCache[asset.localIdentifier] {
+            image = cachedImage
+            isLoading = false
+            return
+        }
+        
         isLoading = true
         
         let options = PHImageRequestOptions()
-        options.deliveryMode = .fastFormat // Use fast format for thumbnails
+        options.deliveryMode = .highQualityFormat // Use high quality for clearer thumbnails
         options.isNetworkAccessAllowed = true
         options.isSynchronous = false
+        options.resizeMode = .exact // Ensure exact sizing for better quality
         
-        // Calculate proper thumbnail size based on screen density
+        // Calculate proper thumbnail size based on screen density for crisp images
         let scale = UIScreen.main.scale
-        let targetSize = CGSize(width: 200 * scale, height: 200 * scale) // Optimized for performance
+        let targetSize = CGSize(width: 300 * scale, height: 300 * scale) // Increased size for better quality
         
         manager.requestImage(
             for: asset,
@@ -506,9 +670,127 @@ fileprivate struct FixedSizeThumbnail: View {
                 // Only update if this is still the current asset
                 if let img = img {
                     image = img
+                    // Cache the image for future use
+                    imageCache[asset.localIdentifier] = img
                 }
                 isLoading = false
             }
+        }
+    }
+}
+
+// MARK: - Album Picker View
+struct AlbumPickerView: View {
+    let albums: [PHAssetCollection]
+    @Binding var selectedAlbum: PHAssetCollection?
+    let onSelect: (PHAssetCollection?) -> Void
+    @Environment(\.dismiss) private var dismiss
+    
+    var body: some View {
+        NavigationView {
+            List {
+                // All Photos option
+                Button(action: {
+                    onSelect(nil)
+                }) {
+                    HStack {
+                        Image(systemName: "photo.on.rectangle.angled")
+                            .font(.system(size: 20))
+                            .foregroundColor(.primary)
+                            .frame(width: 40)
+                        
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Photo Library")
+                                .font(.system(size: 16, weight: .medium))
+                                .foregroundColor(.primary)
+                            
+                            let allPhotosCount = PHAsset.fetchAssets(with: .image, options: nil).count
+                            Text("\(allPhotosCount) photos")
+                                .font(.system(size: 14))
+                                .foregroundColor(.secondary)
+                        }
+                        
+                        Spacer()
+                        
+                        if selectedAlbum == nil {
+                            Image(systemName: "checkmark")
+                                .font(.system(size: 16, weight: .medium))
+                                .foregroundColor(.blue)
+                        }
+                    }
+                    .padding(.vertical, 8)
+                }
+                .buttonStyle(PlainButtonStyle())
+                
+                // User and Smart Albums
+                ForEach(albums, id: \.localIdentifier) { album in
+                    Button(action: {
+                        onSelect(album)
+                    }) {
+                        HStack {
+                            // Album icon
+                            Image(systemName: albumIcon(for: album))
+                                .font(.system(size: 20))
+                                .foregroundColor(.primary)
+                                .frame(width: 40)
+                            
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(album.localizedTitle ?? "Album")
+                                    .font(.system(size: 16, weight: .medium))
+                                    .foregroundColor(.primary)
+                                
+                                let assetCount = PHAsset.fetchAssets(in: album, options: nil).count
+                                Text("\(assetCount) photos")
+                                    .font(.system(size: 14))
+                                    .foregroundColor(.secondary)
+                            }
+                            
+                            Spacer()
+                            
+                            if selectedAlbum?.localIdentifier == album.localIdentifier {
+                                Image(systemName: "checkmark")
+                                    .font(.system(size: 16, weight: .medium))
+                                    .foregroundColor(.blue)
+                            }
+                        }
+                        .padding(.vertical, 8)
+                    }
+                    .buttonStyle(PlainButtonStyle())
+                }
+            }
+            .listStyle(PlainListStyle())
+            .navigationTitle("Select Album")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button("Done") {
+                        dismiss()
+                    }
+                }
+            }
+        }
+    }
+    
+    private func albumIcon(for collection: PHAssetCollection) -> String {
+        switch collection.assetCollectionSubtype {
+        case .smartAlbumFavorites:
+            return "heart"
+        case .smartAlbumRecentlyAdded:
+            return "clock"
+        case .smartAlbumVideos:
+            return "video"
+        case .smartAlbumSelfPortraits:
+            return "person.crop.square"
+        case .smartAlbumScreenshots:
+            return "camera.viewfinder"
+        case .smartAlbumPanoramas:
+            return "pano"
+        case .smartAlbumBursts:
+            return "square.stack.3d.down.forward"
+        case .smartAlbumLivePhotos:
+            return "livephoto"
+        default:
+            return "folder"
         }
     }
 }

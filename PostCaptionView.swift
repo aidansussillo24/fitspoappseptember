@@ -31,96 +31,326 @@ struct PostCaptionView: View {
 
     @State private var showTagPlacer   = false
     @State private var pendingItemId: String? = nil
+    
+    // Location
+    @State private var selectedLocationName: String? = nil
+    @State private var selectedLocationCoordinates: (latitude: Double, longitude: Double)? = nil
+    @State private var showLocationSearch = false
 
     @Environment(\.dismiss) private var dismiss
 
-    var body: some View {
-        VStack(spacing: 16) {
+    // MARK: - Computed Views
+    private var imagePreviewSection: some View {
+        VStack(spacing: 0) {
             Image(uiImage: image)
                 .resizable()
                 .scaledToFit()
-                .frame(maxHeight: 300)
+                .frame(maxWidth: .infinity)
+                .frame(maxHeight: 400)
+                .background(Color.black)
                 .cornerRadius(12)
-
-            // caption + face-tag button
+                .shadow(color: .black.opacity(0.15), radius: 8, x: 0, y: 4)
+        }
+        .padding(.top, 8)
+    }
+    
+    private var mainContentCard: some View {
+        VStack(spacing: 20) {
+            captionSection
+            locationSection
+            outfitItemsSection
+            
+            if let err = errorMsg {
+                Text(err)
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundColor(.red)
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 20)
+        .background(Color(.systemBackground))
+        .cornerRadius(16)
+        .shadow(color: .black.opacity(0.05), radius: 4, x: 0, y: 2)
+    }
+    
+    private var captionSection: some View {
+        VStack(alignment: .leading, spacing: 16) {
             HStack {
-                TextField("Enter a caption…", text: $caption, axis: .vertical)
-                    .textFieldStyle(.roundedBorder)
-                    .lineLimit(3, reservesSpace: true)
-
+                Text("Caption")
+                    .font(.system(size: 18, weight: .semibold))
+                    .foregroundColor(.primary)
+                Spacer()
+                
                 Button { showTagOverlay = true } label: {
-                    Label("Tag", systemImage: "tag")
-                        .font(.subheadline.weight(.semibold))
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 6)
-                        .background(Color(.systemGray6), in: Capsule())
+                    HStack(spacing: 6) {
+                        Image(systemName: "person.crop.circle.badge.plus")
+                            .font(.system(size: 14))
+                        Text("Tag People")
+                            .font(.system(size: 14, weight: .medium))
+                    }
+                    .foregroundColor(.blue)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+                    .background(Color.blue.opacity(0.1))
+                    .cornerRadius(16)
                 }
             }
-
+            
+            TextField("Write a caption...", text: $caption, axis: .vertical)
+                .font(.system(size: 16))
+                .padding(.horizontal, 16)
+                .padding(.vertical, 12)
+                .background(Color(.systemGray6))
+                .cornerRadius(12)
+                .lineLimit(4, reservesSpace: false)
+            
             if !tags.isEmpty {
-                Text("\(tags.count) people tagged")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-            }
-
-            // ───────── Outfit items section ─────────
-            VStack(spacing: 8) {
                 HStack {
-                    Text("Outfit items").font(.headline)
+                    Image(systemName: "person.2.fill")
+                        .font(.system(size: 12))
+                        .foregroundColor(.blue)
+                    Text("\(tags.count) \(tags.count == 1 ? "person" : "people") tagged")
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundColor(.blue)
                     Spacer()
-                    Button {
-                        editIndex = nil
-                        showItemForm = true
-                    } label: { Image(systemName: "plus") }
                 }
-
-                if items.isEmpty {
-                    Text("No items added")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                } else {
-                    ForEach(Array(items.enumerated()), id: \.offset) { idx, it in
-                        HStack {
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(it.label).fontWeight(.semibold)
-                                if !it.brand.isEmpty {
-                                    Text(it.brand)
-                                        .font(.caption)
-                                        .foregroundColor(.secondary)
-                                }
-                            }
-                            Spacer()
-                            Button {                      // edit
-                                editIndex = idx
-                                showItemForm = true
-                            } label: { Image(systemName: "pencil") }
-
-                            Button(role: .destructive) { // delete
-                                items.remove(at: idx)
-                                oTags.removeAll { $0.itemId == it.id }
-                            } label: { Image(systemName: "trash") }
+            }
+        }
+    }
+    
+    private var locationSection: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            HStack {
+                Text("Location")
+                    .font(.system(size: 18, weight: .semibold))
+                    .foregroundColor(.primary)
+                Spacer()
+            }
+            
+            VStack(spacing: 12) {
+                // Show current location if available, otherwise show option to use it
+                if let locationName = selectedLocationName {
+                    HStack {
+                        Image(systemName: "location.fill")
+                            .font(.system(size: 16))
+                            .foregroundColor(.blue)
+                        Text(locationName)
+                            .font(.system(size: 16, weight: .medium))
+                            .foregroundColor(.primary)
+                        Spacer()
+                        Button {
+                            selectedLocationName = nil
+                            selectedLocationCoordinates = nil
+                        } label: {
+                            Image(systemName: "xmark.circle.fill")
+                                .font(.system(size: 16))
+                                .foregroundColor(.secondary)
                         }
-                        .padding(.vertical, 4)
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 12)
+                    .background(Color.blue.opacity(0.1))
+                    .cornerRadius(12)
+                } else {
+                    Button {
+                        if let location = LocationManager.shared.location {
+                            selectedLocationName = "Current Location"
+                            selectedLocationCoordinates = (
+                                latitude: location.coordinate.latitude,
+                                longitude: location.coordinate.longitude
+                            )
+                        }
+                    } label: {
+                        HStack {
+                            Image(systemName: "location.fill")
+                                .font(.system(size: 16))
+                                .foregroundColor(.blue)
+                            Text("Use Current Location")
+                                .font(.system(size: 16, weight: .medium))
+                                .foregroundColor(.blue)
+                            Spacer()
+                            Image(systemName: "chevron.right")
+                                .font(.system(size: 12))
+                                .foregroundColor(.secondary)
+                        }
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 12)
+                        .background(Color(.systemGray6))
+                        .cornerRadius(12)
+                    }
+                    
+                    Button {
+                        showLocationSearch = true
+                    } label: {
+                        HStack {
+                            Image(systemName: "magnifyingglass")
+                                .font(.system(size: 16))
+                                .foregroundColor(.secondary)
+                            Text("Search for a location")
+                                .font(.system(size: 16))
+                                .foregroundColor(.secondary)
+                            Spacer()
+                            Image(systemName: "chevron.right")
+                                .font(.system(size: 12))
+                                .foregroundColor(.secondary)
+                        }
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 12)
+                        .background(Color(.systemGray6))
+                        .cornerRadius(12)
                     }
                 }
             }
-            .padding()
-            .background(Color(.systemGray6), in: RoundedRectangle(cornerRadius: 8))
-
-            if let err = errorMsg {
-                Text(err).foregroundColor(.red)
-            }
-
-            Spacer()
         }
-        .padding()
-        .navigationTitle("New Post")
-        .toolbar {
-            ToolbarItem(placement: .navigationBarLeading) {
-                Button("Cancel") { dismissToRoot() }
+    }
+    
+    private var outfitItemsSection: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            HStack(alignment: .center) {
+                HStack(spacing: 8) {
+                    Image(systemName: "tshirt.fill")
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundColor(.primary)
+                    Text("Outfit Items")
+                        .font(.system(size: 18, weight: .semibold))
+                        .foregroundColor(.primary)
+                }
+                Spacer()
+                
+                Button {
+                    editIndex = nil
+                    showItemForm = true
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: "plus")
+                            .font(.system(size: 14, weight: .bold))
+                        Text("Add Item")
+                            .font(.system(size: 14, weight: .semibold))
+                    }
+                    .foregroundColor(.white)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 8)
+                    .background(Color.blue)
+                    .cornerRadius(20)
+                }
             }
-            ToolbarItem(placement: .navigationBarTrailing) {
-                Button("Post") { upload() }.disabled(isPosting)
+            
+            if items.isEmpty {
+                emptyItemsView
+            } else {
+                itemsList
+            }
+        }
+    }
+    
+    private var emptyItemsView: some View {
+        VStack(spacing: 12) {
+            Image(systemName: "tshirt")
+                .font(.system(size: 32))
+                .foregroundColor(.secondary.opacity(0.6))
+            
+            VStack(spacing: 4) {
+                Text("No items added")
+                    .font(.system(size: 16, weight: .medium))
+                    .foregroundColor(.secondary)
+                Text("Add clothing items to help others discover your style")
+                    .font(.system(size: 14))
+                    .foregroundColor(.secondary.opacity(0.8))
+                    .multilineTextAlignment(.center)
+            }
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 32)
+        .background(Color(.systemGray6).opacity(0.5))
+        .cornerRadius(12)
+    }
+    
+    private var itemsList: some View {
+        VStack(spacing: 8) {
+            ForEach(Array(items.enumerated()), id: \.offset) { idx, item in
+                HStack(spacing: 12) {
+                    Image(systemName: "tshirt.fill")
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundColor(.blue)
+                        .frame(width: 32, height: 32)
+                        .background(Color.blue.opacity(0.1))
+                        .cornerRadius(8)
+                    
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(item.label)
+                            .font(.system(size: 16, weight: .semibold))
+                            .foregroundColor(.primary)
+                        if !item.brand.isEmpty {
+                            Text(item.brand)
+                                .font(.system(size: 14))
+                                .foregroundColor(.secondary)
+                        }
+                    }
+                    
+                    Spacer()
+                    
+                    HStack(spacing: 8) {
+                        Button {
+                            editIndex = idx
+                            showItemForm = true
+                        } label: {
+                            Image(systemName: "pencil")
+                                .font(.system(size: 14, weight: .semibold))
+                                .foregroundColor(.blue)
+                                .frame(width: 32, height: 32)
+                                .background(Color.blue.opacity(0.1))
+                                .cornerRadius(8)
+                        }
+                        
+                        Button {
+                            items.remove(at: idx)
+                            oTags.removeAll { $0.itemId == item.id }
+                        } label: {
+                            Image(systemName: "trash")
+                                .font(.system(size: 14, weight: .semibold))
+                                .foregroundColor(.red)
+                                .frame(width: 32, height: 32)
+                                .background(Color.red.opacity(0.1))
+                                .cornerRadius(8)
+                        }
+                    }
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 12)
+                .background(Color(.systemBackground))
+                .cornerRadius(12)
+                .shadow(color: .black.opacity(0.04), radius: 2, x: 0, y: 1)
+                
+                if idx < items.count - 1 {
+                    Divider()
+                        .padding(.horizontal, 16)
+                }
+            }
+        }
+    }
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(spacing: 16) {
+                    imagePreviewSection
+                    mainContentCard
+                }
+                .padding(.horizontal, 16)
+                .padding(.bottom, 20)
+            }
+            .background(Color(.systemGroupedBackground))
+            .navigationTitle("New Post")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button("Post") { 
+                        upload() 
+                    }
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundColor(isPosting ? .secondary : .blue)
+                    .disabled(isPosting)
+                }
             }
         }
 
@@ -166,6 +396,17 @@ struct PostCaptionView: View {
                 pendingItemId = nil
             }
         }
+        
+        // location search
+        .sheet(isPresented: $showLocationSearch) {
+            LocationSearchView { locationResult in
+                selectedLocationName = locationResult.name
+                selectedLocationCoordinates = (
+                    latitude: locationResult.latitude,
+                    longitude: locationResult.longitude
+                )
+            }
+        }
     }
 
     // =========================================================
@@ -175,9 +416,18 @@ struct PostCaptionView: View {
         isPosting = true
         errorMsg  = nil
 
-        let loc = LocationManager.shared.location
-        let lat = loc?.coordinate.latitude
-        let lon = loc?.coordinate.longitude
+        // Use selected location coordinates if available, otherwise use current location
+        let lat: Double?
+        let lon: Double?
+        
+        if let selectedCoords = selectedLocationCoordinates {
+            lat = selectedCoords.latitude
+            lon = selectedCoords.longitude
+        } else {
+            let loc = LocationManager.shared.location
+            lat = loc?.coordinate.latitude
+            lon = loc?.coordinate.longitude
+        }
 
         NetworkService.shared.uploadPost(
             image: image,
