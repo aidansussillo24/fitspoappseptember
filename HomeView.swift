@@ -45,6 +45,30 @@ struct HomeView: View {
                 ScrollViewReader { proxy in
                     ScrollView(showsIndicators: false) {
                         LazyVStack(spacing: 0) {
+                            // Refresh indicator space
+                            if isRefreshing {
+                                VStack(spacing: 8) {
+                                    ProgressView()
+                                        .scaleEffect(1.8)
+                                        .progressViewStyle(CircularProgressViewStyle(tint: .primary))
+                                    
+                                    Text("Refreshing...")
+                                        .font(.system(size: 14, weight: .medium))
+                                        .foregroundColor(.secondary)
+                                }
+                                .frame(maxWidth: .infinity)
+                                .padding(.top, headerVisible ? 95 : 25)
+                                .padding(.bottom, 15)
+                                .background(
+                                    Color(.systemBackground)
+                                        .shadow(color: .black.opacity(0.05), radius: 2, x: 0, y: 1)
+                                )
+                                .transition(.asymmetric(
+                                    insertion: .opacity.combined(with: .move(edge: .top)).combined(with: .scale(scale: 0.8)),
+                                    removal: .opacity.combined(with: .scale(scale: 0.9))
+                                ))
+                            }
+                            
                             // Spacer for header height when visible
                             Rectangle()
                                 .fill(Color.clear)
@@ -102,9 +126,11 @@ struct HomeView: View {
                     header
                         .transition(.move(edge: .top).combined(with: .opacity))
                         .zIndex(1)
+                        .allowsHitTesting(true) // Enable button interactions
                 }
             }
             .animation(.easeInOut(duration: 0.25), value: headerVisible)
+            .animation(.spring(response: 0.4, dampingFraction: 0.8), value: isRefreshing)
             .navigationBarHidden(true)
         }
     }
@@ -119,18 +145,29 @@ struct HomeView: View {
                     NavigationLink(destination: ActivityView()) {
                         Image(systemName: "bell")
                             .font(.title2)
+                            .foregroundColor(.primary)
                     }
+                    .buttonStyle(PlainButtonStyle()) // Ensure proper button behavior
+                    
                     Spacer()
+                    
                     NavigationLink(destination: MessagesView()) {
                         Image(systemName: "bubble.left.and.bubble.right")
                             .font(.title2)
+                            .foregroundColor(.primary)
                     }
+                    .buttonStyle(PlainButtonStyle()) // Ensure proper button behavior
                 }
             }
             .padding(.horizontal, 16)
             .padding(.top, 24)
             .padding(.bottom, 8)
-            .background(Color(.systemBackground))
+            .background(
+                // Solid background that blocks clicks to content underneath
+                Color(.systemBackground)
+                    .ignoresSafeArea(.all, edges: .top)
+            )
+            .contentShape(Rectangle()) // Make entire header area interactive/blocking
         }
     }
 
@@ -258,11 +295,17 @@ struct HomeView: View {
     // MARK: pull‑to‑refresh
     private func refresh() async {
         guard !isRefreshing else { return }
-        isRefreshing = true
-        defer { isRefreshing = false }
-
+        
+        withAnimation(.easeInOut(duration: 0.3)) {
+            isRefreshing = true
+        }
+        
         reachedEnd = false
 
+        // Ensure minimum display time for better UX
+        let minimumDisplayTime: UInt64 = 800_000_000 // 0.8 seconds in nanoseconds
+        let startTime = DispatchTime.now()
+        
         await withCheckedContinuation { (cont: CheckedContinuation<Void, Never>) in
             NetworkService.shared.fetchPostsPage(pageSize: PAGE_SIZE, after: nil) { res in
                 DispatchQueue.main.async {
@@ -276,7 +319,17 @@ struct HomeView: View {
                     case .failure(let err):
                         print("Refresh error:", err)
                     }
-                    cont.resume()
+                    
+                    // Calculate elapsed time and add delay if needed
+                    let elapsed = DispatchTime.now().uptimeNanoseconds - startTime.uptimeNanoseconds
+                    let delay = elapsed < minimumDisplayTime ? minimumDisplayTime - elapsed : 0
+                    
+                    DispatchQueue.main.asyncAfter(deadline: .now() + .nanoseconds(Int(delay))) {
+                        withAnimation(.easeInOut(duration: 0.4)) {
+                            isRefreshing = false
+                        }
+                        cont.resume()
+                    }
                 }
             }
         }

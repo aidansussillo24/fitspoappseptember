@@ -182,9 +182,35 @@ struct PostDetailView: View {
                         .foregroundColor(.black)
                 }
                 if !locationName.isEmpty {
-                    Text(locationName)
-                        .font(.subheadline)
-                        .foregroundColor(.secondary)
+                    if let lat = post.latitude, let lon = post.longitude {
+                        Button(action: {
+                            let coordinate = CLLocationCoordinate2D(latitude: lat, longitude: lon)
+                            print("🗺️ Sending notification to switch to map tab with coordinates: \(coordinate.latitude), \(coordinate.longitude) for location: \(locationName)")
+                            NotificationCenter.default.post(
+                                name: .showMapLocation,
+                                object: nil,
+                                userInfo: [
+                                    "latitude": lat,
+                                    "longitude": lon,
+                                    "post": post
+                                ]
+                            )
+                        }) {
+                            HStack(spacing: 4) {
+                                Image(systemName: "location")
+                                    .font(.system(size: 12))
+                                    .foregroundColor(.blue)
+                                Text(locationName)
+                                    .font(.subheadline)
+                                    .foregroundColor(.blue)
+                            }
+                        }
+                        .buttonStyle(PlainButtonStyle())
+                    } else {
+                        Text(locationName)
+                            .font(.subheadline)
+                            .foregroundColor(.secondary)
+                    }
                 }
             }
             Spacer()
@@ -579,8 +605,16 @@ struct PostDetailView: View {
     private func fetchLocationName() {
         guard let lat = post.latitude, let lon = post.longitude else { return }
         let loc = CLLocation(latitude: lat, longitude: lon)
-        CLGeocoder().reverseGeocodeLocation(loc) { places, _ in
-            locationName = places?.first?.locality ?? ""
+        CLGeocoder().reverseGeocodeLocation(loc) { places, error in
+            DispatchQueue.main.async {
+                if let error = error {
+                    print("Geocoding error: \(error.localizedDescription)")
+                    // Fallback to showing coordinates if geocoding fails
+                    self.locationName = "\(lat), \(lon)"
+                } else {
+                    self.locationName = places?.first?.locality ?? "Unknown Location"
+                }
+            }
         }
     }
 

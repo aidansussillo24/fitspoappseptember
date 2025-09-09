@@ -62,16 +62,12 @@ struct PostCardView: View {
         }
     }
 
-    private var forecastURL: URL? {
-        guard let lat = post.latitude, let lon = post.longitude else { return nil }
-        return URL(string: "https://weather.com/weather/today/l/\(lat),\(lon)")
-    }
 
     // MARK: – Body
     var body: some View {
         VStack(spacing: 0) {
 
-            // ── Header (avatar · name · weather) ──────────────────
+            // ── Header (avatar · name · location) ──────────────────
             HStack(spacing: 12) {
                 NavigationLink(destination: ProfileView(userId: post.userId)) {
                     HStack(spacing: 8) {
@@ -81,12 +77,12 @@ struct PostCardView: View {
                                 .font(.system(size: 14, weight: .semibold))
                                 .foregroundColor(.primary)
 
-                            if let temp = post.temp, let icon = post.weatherSymbolName {
+                            if let city = post.city, !city.isEmpty {
                                 HStack(spacing: 4) {
-                                    Image(systemName: icon)
+                                    Image(systemName: "location")
                                         .font(.system(size: 12))
                                         .foregroundColor(.secondary)
-                                    Text("\(Int(temp))°")
+                                    Text(city)
                                         .font(.system(size: 12, weight: .medium))
                                         .foregroundColor(.secondary)
                                 }
@@ -319,8 +315,9 @@ struct PostCardView_Previews: PreviewProvider {
                 isLiked:   false,
                 latitude:  nil,
                 longitude: nil,
-                temp:      22,
-                weatherIcon: "01d",
+                temp:      nil,
+                weatherIcon: nil,
+                city:      "New York",
                 hashtags:  []
             ),
             fixedImageHeight: 350 // preview with Explore‑style crop

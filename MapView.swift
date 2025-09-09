@@ -6,6 +6,12 @@ import MapKit
 import CoreLocation
 
 struct MapView: View {
+    // Optional coordinate to focus on when opening the map
+    let focusCoordinate: CLLocationCoordinate2D?
+    let focusPost: Post?
+    // Whether this view should wrap itself in NavigationView (for tab usage) or not (for navigation destination)
+    private let shouldWrapInNavigationView: Bool
+    
     @State private var allPosts: [Post] = []
     @State private var posts:    [Post] = []
     @State private var filter    = MapFilter()
@@ -15,18 +21,53 @@ struct MapView: View {
     @State private var showLocationDetail = false
     @State private var searchText = ""
     @State private var clusters: [LocationCluster] = []
-    @State private var region = MKCoordinateRegion(
-        center: CLLocationCoordinate2D(latitude: 37.7749,
-                                       longitude: -122.4194),
-        span:   MKCoordinateSpan(latitudeDelta:  0.2,
-                                 longitudeDelta: 0.2)
-    )
+    @State private var region: MKCoordinateRegion
+    @State private var hasAppliedFocus = false
+    
+    // Initializers
+    init() {
+        self.focusCoordinate = nil
+        self.focusPost = nil
+        self.shouldWrapInNavigationView = true // For tab bar usage
+        // Default San Francisco region
+        self._region = State(initialValue: MKCoordinateRegion(
+            center: CLLocationCoordinate2D(latitude: 37.7749, longitude: -122.4194),
+            span: MKCoordinateSpan(latitudeDelta: 0.2, longitudeDelta: 0.2)
+        ))
+    }
+    
+    init(focusOn coordinate: CLLocationCoordinate2D?, post: Post? = nil) {
+        self.focusCoordinate = coordinate
+        self.focusPost = post
+        
+        if let coordinate = coordinate {
+            self.shouldWrapInNavigationView = false // For navigation destination usage
+            // Set initial region to focus coordinate with close zoom
+            self._region = State(initialValue: MKCoordinateRegion(
+                center: coordinate,
+                span: MKCoordinateSpan(latitudeDelta: 0.01, longitudeDelta: 0.01)
+            ))
+            self._hasAppliedFocus = State(initialValue: true) // Mark that we've applied focus
+            print("🗺️ MapView initialized with focus coordinate: \(coordinate.latitude), \(coordinate.longitude)")
+            print("🗺️ MapView init - Setting hasAppliedFocus to TRUE for focused view")
+            print("🗺️ MapView init - Initial region center: \(coordinate.latitude), \(coordinate.longitude)")
+        } else {
+            self.shouldWrapInNavigationView = true // For tab bar usage
+            // Default San Francisco region
+            self._region = State(initialValue: MKCoordinateRegion(
+                center: CLLocationCoordinate2D(latitude: 37.7749, longitude: -122.4194),
+                span: MKCoordinateSpan(latitudeDelta: 0.2, longitudeDelta: 0.2)
+            ))
+            self._hasAppliedFocus = State(initialValue: false)
+            print("🗺️ MapView initialized with no focus coordinate - using default")
+        }
+    }
 
     var body: some View {
         // 1️⃣ Filter to only those posts with non-nil coords
         let geoPosts = posts.filter { $0.latitude != nil && $0.longitude != nil }
         
-        return NavigationView {
+        let mapContent = Group {
             ZStack {
                 // Map with enhanced markers
                 Map(
@@ -167,8 +208,36 @@ struct MapView: View {
             }
             .onChange(of: filter) { _ in applyFilter() }
             .onAppear {
+                print("🗺️ MapView onAppear - Current region center: \(region.center.latitude), \(region.center.longitude)")
+                print("🗺️ MapView onAppear - focusCoordinate: \(focusCoordinate?.latitude ?? 0), \(focusCoordinate?.longitude ?? 0)")
+                print("🗺️ MapView onAppear - hasAppliedFocus: \(hasAppliedFocus)")
+                
+                // Force region update if we have focus coordinates but wrong region
+                if let coordinate = focusCoordinate {
+                    let correctRegion = MKCoordinateRegion(
+                        center: coordinate,
+                        span: MKCoordinateSpan(latitudeDelta: 0.01, longitudeDelta: 0.01)
+                    )
+                    if abs(region.center.latitude - coordinate.latitude) > 0.001 || 
+                       abs(region.center.longitude - coordinate.longitude) > 0.001 {
+                        print("🗺️ CORRECTING region center from \(region.center.latitude), \(region.center.longitude) to \(coordinate.latitude), \(coordinate.longitude)")
+                        region = correctRegion
+                    }
+                    hasAppliedFocus = true // Ensure this is set
+                    print("🗺️ MapView onAppear - FORCED hasAppliedFocus to TRUE")
+                }
+                
                 loadPosts()
             }
+        }
+        
+        // Conditionally wrap in NavigationView based on usage context
+        if shouldWrapInNavigationView {
+            NavigationView {
+                mapContent
+            }
+        } else {
+            mapContent
         }
     }
     
@@ -179,15 +248,23 @@ struct MapView: View {
                 self.allPosts = allPosts
                 applyFilter()
 
-                // center on first geo-tagged post, if any
-                if let first = allPosts.first,
+                // center on first geo-tagged post, if any (but only if no focus coordinate is set and we haven't applied focus yet)
+                print("🗺️ loadPosts - focusCoordinate: \(String(describing: focusCoordinate)), hasAppliedFocus: \(hasAppliedFocus)")
+                if focusCoordinate == nil && !hasAppliedFocus,
+                   let first = allPosts.first,
                    let lat   = first.latitude,
                    let lng   = first.longitude
                 {
-                    region.center = CLLocationCoordinate2D(
-                        latitude:  lat,
-                        longitude: lng
-                    )
+                    DispatchQueue.main.async {
+                        print("🗺️ Auto-centering to first post: \(lat), \(lng)")
+                        region.center = CLLocationCoordinate2D(
+                            latitude:  lat,
+                            longitude: lng
+                        )
+                        print("🗺️ Auto-centered on first post: \(lat), \(lng)")
+                    }
+                } else {
+                    print("🗺️ Skipping auto-center - focusCoordinate exists or focus already applied")
                 }
             }
         }

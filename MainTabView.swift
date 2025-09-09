@@ -10,6 +10,11 @@
 //  swap “hanger” for another symbol—e.g. “tray.and.arrow.up”.
 
 import SwiftUI
+import CoreLocation
+
+extension Notification.Name {
+    static let showMapLocation = Notification.Name("showMapLocation")
+}
 
 struct MainTabView: View {
 
@@ -17,6 +22,10 @@ struct MainTabView: View {
     @State private var selected      = 0
     @State private var lastNonPost   = 0
     @State private var showNewPost   = false
+    
+    // Map focus state
+    @State private var mapFocusCoordinate: CLLocationCoordinate2D?
+    @State private var mapFocusPost: Post?
 
     var body: some View {
         TabView(selection: $selected) {
@@ -45,7 +54,7 @@ struct MainTabView: View {
                 }
                 .tag(2)
 
-            MapView()
+            MapView(focusOn: mapFocusCoordinate, post: mapFocusPost)
                 .tabItem { Label("Map", systemImage: "map") }
                 .tag(3)
 
@@ -71,5 +80,31 @@ struct MainTabView: View {
             NewPostView()
                 .toolbar(.hidden, for: .tabBar)
         }
+        .onReceive(NotificationCenter.default.publisher(for: .showMapLocation)) { notification in
+            if let userInfo = notification.userInfo,
+               let lat = userInfo["latitude"] as? Double,
+               let lon = userInfo["longitude"] as? Double {
+                let coordinate = CLLocationCoordinate2D(latitude: lat, longitude: lon)
+                let post = userInfo["post"] as? Post
+                showMapLocation(coordinate: coordinate, post: post)
+            }
+        }
+    }
+    
+    // MARK: - Map Navigation
+    private func showMapLocation(coordinate: CLLocationCoordinate2D, post: Post?) {
+        print("🗺️ Switching to map tab with coordinate: \(coordinate.latitude), \(coordinate.longitude)")
+        
+        // Clear previous focus and set new focus
+        mapFocusCoordinate = nil
+        mapFocusPost = nil
+        
+        // Set new focus after a brief delay to ensure view updates
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+            mapFocusCoordinate = coordinate
+            mapFocusPost = post
+        }
+        
+        selected = 3 // Switch to map tab
     }
 }
